@@ -5,4 +5,4 @@ This repo contains R-scripts (+ the data) in R-markdown to visualize the dataset
 
 You can run the script to make the figure of the per dataset sequencing depth versus metabarcode target region via rstudio: [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/biodiversity-aq/MARS_Figures/master?urlpath=rstudio)
 
-or open de Jupyter Notebook with Binder: [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/biodiversity-aq/MARS_Figures/master)
+or open de Jupyter Notebook with Binder: [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/biodiversity-aq/MARS_Figures/master?urlpath=https%3A%2F%2Fgithub.com%2Fbiodiversity-aq%2FMARS_Figures%2Fblob%2Fmaster%2FMARS_Sequence_Figure.ipynb.json)
