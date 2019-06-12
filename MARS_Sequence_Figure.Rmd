@@ -7,7 +7,6 @@ output: pdf_document
 
 ```{r setup_1, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-#tinytex::install_tinytex()  # install TinyTeX
 ```
 
 ## Introduction
