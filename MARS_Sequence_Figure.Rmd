@@ -1,0 +1,265 @@
+---
+title: "MARS_Sequence_Figure"
+author: "Maxime Sweetlove"
+date: "6/11/2019"
+output: pdf_document
+---
+
+```{r setup_1, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#tinytex::install_tinytex()  # install TinyTeX
+```
+
+## Introduction
+
+In this R Markdown document, we will align pimer sequences of metabarcode datasets to a 16S ssu rRNA reference (in this case, we chose E. Coli sequence NR_114042.1), in order to plot the coverage of that dataset on the 16S gene, compared to the number of sequences in that dataset.
+
+### Initiation
+
+To start, initiate and create the working environment by loading the required packages.
+
+```{r setup_2, include=FALSE}
+library(Biostrings)
+library(seqinr)
+library(seqRFLP)
+library(stringr)
+
+```
+
+### Read in the data and the E.Coli reference sequence 
+In this step, the data is imported. Metadata of everey dataset on mARS is stored as a MiMARKS or MIxS table together with a corresponding SeqSet table. Here, all these data have been brought together into one file (version 11Jun2019). Next, the reference sequence will be read from a fasta file.
+
+```{r read_data}
+dataOut <- read.csv('mARS_MetaData_V_11Jun2019.csv', header=TRUE, row.names=1)
+
+RefSeq <- read.fasta(file='eColiRef.fasta')
+
+# make sure all bases in the sequence are in capitals
+RefSeq <- c(toupper(paste(unlist(RefSeq)[[2]], sep='', collapse = '')))
+```
+
+## Getting the primer sequences 
+
+Next, we need to get the primer sequences of the datasets that targeted the 16S gene with a metabarcoding technique. 
+
+For this, a custom function (split_DNAstringList_unknownSep) was created to deal with different notation variants of the primers. The function takes a string composed of short DNA sequences, and tries to split them based on a separator that it can recognize. This function is declared first. A second function that we will declare needs to take care of finding where the primer sequence aligns to the reference sequence. This function will take a primer and reference, and will return the starting (if start=TRUE) or end (start=FALSE) position. We will call this function primerPosition.
+
+```{r get_primers_function}
+
+split_DNAstringList_unknownSep<-function(DNAstringList_unknownSep){
+  #takes at string composed of DNA sequences with unkown separator
+  
+  #trim trailing white spaces
+  DNAstringList_unknownSep<-StrTrim(DNAstringList_unknownSep, pattern = " \t\n", method = "both")
+  
+  #assume space as default sep
+  if(grepl(",", DNAstringList_unknownSep, fixed=TRUE)){
+    DNAstringList_unknownSep<-gsub(" ", "", DNAstringList_unknownSep, fixed = TRUE)
+    DNAstringList_unknownSep<-strsplit(DNAstringList_unknownSep, ',')[[1]]
+  } else if(grepl(";", DNAstringList_unknownSep, fixed=TRUE)){
+    DNAstringList_unknownSep<-gsub(" ", "", DNAstringList_unknownSep, fixed = TRUE)
+    DNAstringList_unknownSep<-strsplit(DNAstringList_unknownSep, ';')[[1]]
+  } else if(grepl("|", DNAstringList_unknownSep, fixed=TRUE)){
+    DNAstringList_unknownSep<-gsub(" ", "", DNAstringList_unknownSep, fixed = TRUE)
+    DNAstringList_unknownSep<-strsplit(DNAstringList_unknownSep, '|')[[1]]
+  } else{
+    DNAstringList_unknownSep<-strsplit(DNAstringList_unknownSep, ' ')[[1]]
+  }
+  
+  return(DNAstringList_unknownSep)
+}
+
+primerPosition<-function(primer, reference, start=TRUE){
+  ### function that takes a primer and a reference
+  ### returns the starting (start=TRUE) or ending (start=FALSE) position 
+  mat <- nucleotideSubstitutionMatrix(match = 1, mismatch = -1, baseOnly = FALSE)
+  
+
+  locAlign <- tryCatch({pairwiseAlignment(pattern=toupper(primer), subject=reference, type= "local", 
+                                          substitutionMatrix = mat, gapOpening = 8, 
+                                          gapExtension = 4)}, 
+                       error = function(e){print('error')})
+  
+
+  if(start==TRUE){
+    return(locAlign@subject@range@start)
+  } else{
+    return(locAlign@subject@range@start+nchar(primer))
+  }
+}
+
+```
+
+The data that we need to generate the figure will be stored in a new dataframe, called figData, containing 3 columns: seqstart (forward primer starting position on the reference sequence), seqend (reverse primer end position on the reference sequence), reads (the number of reads on SRA) and dataset (the name of the dataset from which a sample comes). Each row will represent a sample from a dataset.
+If the number of reads is not specified (e.g. in the case of Sanger sequencing), we will assume 10 reads for illustrative purposes. If different primers have been submitted that target different parts of the 16S gene, than (for now) only the first primer will be considered to avoid overcomplicating the way the datasets can be represented on the figure. 
+
+```{r get_primers_getData}
+
+require(DescTools)
+figData<-data.frame(seqstart=NA, seqend=NA, reads=NA, dataset=NA)
+lineX=1
+for(line in 1:nrow(dataOut)){
+  # only select data that has been registered as targeting the 16S gene
+  if(dataOut[line,]$marker %in% c("16S", "16S ssu rRNA", "16S rRNA")){
+    fprimerlist<-(dataOut[line,]$primerSequenceForward)
+    rprimerlist<-(dataOut[line,]$primerSequenceReverse)
+    reads <- dataOut[line,]$lib_reads_seqd
+    datasetName <- dataOut[line,]$datasetName
+    if(reads==""|is.na(reads)){
+      #If the number of reads is not specified (e.g. in the case of Sanger sequencing), we will assume 10 reads for illustrative purposes.
+      reads<-10
+    }
+    start_ref <- 1
+    end_ref <- nchar(RefSeq)
+    
+    if(!fprimerlist==""){
+      fprimerlist<-split_DNAstringList_unknownSep(fprimerlist)
+      
+      if(length(fprimerlist) > 1){
+        startlist<-c()
+        for(fprimer in fprimerlist){
+          startpos<-primerPosition(fprimer, RefSeq, start=TRUE)
+          startlist<-c(startlist, startpos)
+        }
+        if(max(startlist)-min(startlist)>10){
+          #treat as different primers
+          ###print("different primers have been found, you might need to work this part out")
+          startpos<-min(startlist)
+        } else{
+          #treat as the same primer
+          startpos<-min(startlist)
+        }
+      } else{
+        startpos<-primerPosition(fprimerlist[1], RefSeq, start=TRUE)
+      }
+      if(length(rprimerlist) > 1){
+        startlist<-c()
+        for(fprimer in fprimerlist){
+          startpos<-primerPosition(fprimer, RefSeq, start=TRUE)
+          startlist<-c(startlist, startpos)
+        }
+        if(max(startlist)-min(startlist)>10){
+          #treat as different primers
+          print("different primers have been found, you might need to work this part out")
+        } else{
+          #treat as the same primer
+          startpos<-min(startlist)
+        }
+      } else{
+        startpos<-primerPosition(fprimerlist[1], RefSeq, start=TRUE)
+      }
+      figData[lineX,]$seqstart<-startpos
+    }
+    
+    if(!rprimerlist==""){
+      #trim trailing white spaces
+      rprimerlist<-split_DNAstringList_unknownSep(rprimerlist)
+      
+      if(length(rprimerlist) > 1){
+        endlist<-c()
+        for(rprimer in rprimerlist){
+          endpos<-primerPosition(revComp(rprimer), RefSeq, start=FALSE)
+          endlist<-c(endlist, endpos)
+        }
+        if(max(endlist)-min(endlist)>10){
+          #treat as different primers
+          print("different primers have been found, you might need to work this part out")
+          endpos<-max(endlist)
+        } else{
+          #treat as the same primer
+          endpos<-max(endlist)
+        }
+      } else{
+        endpos<-primerPosition(revComp(rprimerlist[1]), RefSeq, start=FALSE)
+      }
+      figData[lineX,]$seqend<-endpos
+      figData[lineX,]$reads<-reads
+      figData[lineX,]$dataset<-datasetName
+      lineX=lineX+1
+    }
+
+  }
+}
+
+```
+
+Finally, we need to get ride of rows with empty values, and collapse the data (now a row per sample) in to one record per dataset (that is, a row per dataset).
+
+```{r clean_up}
+
+# get ride of rows with empty values
+figData[figData==""] <- NA
+figData<-figData[complete.cases(figData), ]
+figData<-data.frame(sapply(figData, as.numeric))
+
+# aggregate data
+figAggdata <- aggregate(. ~ seqstart + seqend + dataset, data=figData, FUN=sum)
+figAggdata$id<-c(1:nrow(figAggdata))
+
+```
+
+## Creating the figure
+
+Now that we have collected all the information that we need, we can start creating the figure with ggplot2. On the x-axis, we will plot the sparting and ending position of the metabarcode, as if they would be hypothethically aligned to the reference sequence. On the y-axis, we want to show the sequencing depth, represented by the number of reads in the dataset (log scale).
+
+```{r figure_part_1}
+
+# set up the x-axis
+x_ax_name<-expression(paste("position on the 16S SSU rRNA (reference: ", italic("E. coli"), ")"))
+x_ax_breaks<-c(1,500,1000,1500)
+x_ax_labs<-paste(x_ax_breaks, 'bp', sep=" ")
+
+#set up the y-axis
+y_ax_breaks<-c(1:9)
+y_ax_labs<-10^y_ax_breaks
+
+# plot the data
+ggplot(figAggdata, aes(fill=id)) + 
+  geom_rect(fill = "royalblue", alpha = 0.65,
+    aes(xmin = seqstart, xmax = seqend,
+                ymin = log10(reads)-0.03, ymax = log10(reads)+0.03)) +
+  scale_y_continuous(name="number of reads (log scale)",
+                     breaks=y_ax_breaks,labels=y_ax_labs) +
+  scale_x_continuous(name=x_ax_name,
+                     breaks=x_ax_breaks, labels=x_ax_labs) +
+  ggtitle("metabarcode data registered on mARS") +
+  theme(plot.title = element_text(hjust = 0.5, face="bold"))
+
+```
+
+We could also represent the different v-regions on the plot. This makes plotting the data a bit more complicated, but it'll be worth while. The positions of the different v-regions of the 16S were taken from Yang, Bo & Wang, Yong & Qian, Pei-Yuan. (2016). Sensitivity and correlation of hypervariable regions in 16S rRNA genes in phylogenetic analysis. BMC Bioinformatics. 17. 10.1186/s12859-016-0992-y. 
+
+```{r figure_part_2}
+v_16S_names<-paste("v", as.character(c(1:9)), sep="")
+v_16S_min<-c(8, 97, 307, 488, 747, 886, 1030, 1181, 1373)
+v_16S_max<-c(96, 306, 487, 746, 885, 1029, 1180, 1372, 1468)
+v_16S_col<-rep(c("red", "blue"),5)[1:9]
+
+v_plot<-""
+for(v in 1:9){
+  v_plot <- paste(v_plot," geom_rect(fill = \"", v_16S_col[v], "\"",
+                        ", aes(xmin = ", v_16S_min[v], 
+                        ", xmax = ", v_16S_max[v],
+                        ",ymin = log10(1)-0.03, ymax = log10(1)+0.03)) +", 
+                        sep="")
+}
+
+
+  
+plottext <- paste("ggplot(figAggdata, aes(fill=id)) + 
+            geom_rect(fill = \"royalblue\", alpha = 0.65,
+              aes(xmin = seqstart, xmax = seqend,
+              ymin = log10(reads)-0.03, ymax = log10(reads)+0.03)) +",
+            v_plot,
+            "scale_y_continuous(name=\"number of reads (log scale)\",
+                     breaks=y_ax_breaks,labels=y_ax_labs) +
+            scale_x_continuous(name=x_ax_name,
+            breaks=x_ax_breaks, labels=x_ax_labs) +
+            ggtitle(\"metabarcode data registered on mARS\") +
+            theme(plot.title = element_text(hjust = 0.5, face=\"bold\"))",
+            sep="")
+eval(parse(text=plottext))
+
+
+```
+
