@@ -1,9 +1,7 @@
 # MARS_Figures
-R-tools to create the figures that summarize the data on mARS.biodiversity.aq
+R-tools to create the figures that summarize and visualize the datasets registered on the mARS.biodiversity.aq portal
 
-This repo contains R-scripts (+ the data) in R-markdown to visualize the datasets registered on mARS.biodiversity.aq.
-
-The markdown script ">.mkd" make the figure of the sequencing depth versus metabarcode target region 
+The markdown script "MARS_Sequence_Figure.Rmd" contains the code needed to visualize how the different metabarcode datasets on mARS that target the Bacterial 16S gene cover the different variable regions, by aligning the primer sequences provided by the authors to a 16S reference sequence (E. Coli) on the x-axis. The y-axis ordens the datasets according to their sequencing depth (number of reads).
 
 You can run the R-script via rstudio in your browser: [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/biodiversity-aq/MARS_Figures/master?urlpath=rstudio)
 
